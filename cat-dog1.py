@@ -1,50 +1,32 @@
 import streamlit as st
 import tensorflow as tf
-import json
 import numpy as np
+import json
 from PIL import Image
+from pathlib import Path
 
-# Page Title
+# Project folder
+BASE_DIR = Path(__file__).parent
+
 st.title("CNN Image Classification")
 st.write("Upload an image to classify it")
 
-# Load Images
-data = tf.keras.utils.image_dataset_from_directory(
-    r"C:\vaibhav\dog-cat-class\train",
-    image_size=(64, 64),
-    batch_size=2
-)
+# Load saved model
+@st.cache_resource
+def load_model():
+    return tf.keras.models.load_model(
+        BASE_DIR / "CAT.keras"
+    )
 
-# CNN Model
-model = tf.keras.Sequential([
-    tf.keras.layers.Rescaling(1./255),
-    tf.keras.layers.Conv2D(16, (3,3), activation="relu"),
-    tf.keras.layers.MaxPooling2D(),
-    tf.keras.layers.Flatten(),
-    tf.keras.layers.Dense(5, activation="softmax")
-])
+model = load_model()
 
-# Compile Model
-model.compile(
-    optimizer="adam",
-    loss="sparse_categorical_crossentropy",
-    metrics=["accuracy"]
-)
+# Load class names
+with open(BASE_DIR / "classes.json", "r") as f:
+    class_names = json.load(f)
 
-# Train Model
-if st.button("Train Model"):
-    with st.spinner("Training model..."):
-        model.fit(data, epochs=50)
-        model.save("CAT.keras")
-
-        with open("classes.json", "w") as f:
-            json.dump(data.class_names, f)
-
-    st.success("Model trained successfully!")
-
-# Upload Image
+# Upload image
 file = st.file_uploader(
-    "Upload Image",
+    "Upload an image",
     type=["jpg", "jpeg", "png"]
 )
 
@@ -54,29 +36,23 @@ if file is not None:
 
     st.image(img, caption="Uploaded Image")
 
-    if st.button("Predict Image"):
+    if st.button("Predict"):
 
-        # Resize Image
-        img = img.resize((64,64))
+        img = img.resize((64, 64))
 
-        # Convert Image to Array
         x = tf.keras.utils.img_to_array(img)
+        x = np.expand_dims(x, axis=0)
 
-        # Expand Dimensions
-        x = tf.expand_dims(x, 0)
+        prediction = model.predict(x, verbose=0)[0]
 
-        # Load Saved Model
-        m = tf.keras.models.load_model("CAT.keras")
+        index = np.argmax(prediction)
 
-        # Load Class Names
-        with open("classes.json", "r") as f:
-            class_names = json.load(f)
+        st.success(
+            "Predicted Category: " + class_names[index]
+        )
 
-        # Prediction
-        p = m.predict(x)
+        confidence = float(prediction[index]) * 100
 
-        # Display Result
-        st.success("Predicted Category: " + class_names[np.argmax(p)])
-
-        st.write("Prediction:", p)
-        st.write("Accuracy:", round(float(np.max(p))*100, 2), "%")
+        st.write(
+            "Confidence:", round(confidence, 2), "%"
+        )
